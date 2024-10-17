@@ -15,8 +15,8 @@
 #include <thread>
 #include <stdint.h>
 
-#define ASYNC_READ 1
-#define BATCH_READ 1
+// #define ASYNC_READ 1
+// #define BATCH_READ 1
 
 #ifdef _MSC_VER
 #include <tchar.h>
