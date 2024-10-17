@@ -105,7 +105,7 @@ namespace SPTAG
 #if (__cplusplus < 201703L)
 #define ALIGN_ALLOC(size) _mm_malloc(size, 32)
 #define ALIGN_FREE(ptr) _mm_free(ptr)
-#define PAGE_ALLOC(size) _mm_malloc(size, 512)
+#define PAGE_ALLOC(size) _mm_malloc(size, 4096)
 #define PAGE_FREE(ptr) _mm_free(ptr)
 #else
 #define ALIGN_ALLOC(size) ::operator new(size, (std::align_val_t)32)
