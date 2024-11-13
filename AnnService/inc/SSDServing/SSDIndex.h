@@ -150,12 +150,19 @@ namespace SPTAG {
                 for (auto& thread : threads) { thread.join(); }
 
                 double sendingCost = sw.getElapsedSec();
-
+                
+                uint64_t totalDiskIOCount = 0;
+                for (auto &stat: p_stats) {
+                    totalDiskIOCount += stat.m_diskIOCount;
+                }
                 SPTAGLIB_LOG(Helper::LogLevel::LL_Info,
-                    "Finish sending in %.3lf seconds, actuallQPS is %.2lf, query count %u.\n",
+                            "IOCount %llu\n", totalDiskIOCount);
+                SPTAGLIB_LOG(Helper::LogLevel::LL_Info,
+                    "Finish sending in %.3lf seconds, actuallQPS is %.2lf, query count %u, IOPS %.2lf.\n",
                     sendingCost,
                     numQueries / sendingCost,
-                    static_cast<uint32_t>(numQueries));
+                    static_cast<uint32_t>(numQueries)
+                    , totalDiskIOCount / sendingCost);
 
                 for (int i = 0; i < numQueries; i++) { p_results[i].CleanQuantizedTarget(); }
             }
