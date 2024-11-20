@@ -1045,7 +1045,7 @@ namespace SPTAG
                 return ErrorCode::Success;
             }
 
-        private:
+        protected:
             struct ListInfo
             {
                 std::size_t listTotalBytes = 0;
@@ -1586,7 +1586,7 @@ namespace SPTAG
                 SPTAGLIB_LOG(Helper::LogLevel::LL_Info, "Time to write results:%.2lf sec.\n", ((double)std::chrono::duration_cast<std::chrono::seconds>(t2 - t1).count()) + ((double)std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()) / 1000);
             }
 
-        private:
+        protected:
             
             std::string m_extraFullGraphFile;
 
@@ -1610,6 +1610,146 @@ namespace SPTAG
 
             int m_listPerFile = 0;
         };
+        template <typename ValueType>
+        class ExtraFullGraphISCSearcher : public ExtraFullGraphSearcher<ValueType>
+        {
+        public:
+              virtual void SearchIndex(ExtraWorkSpace* p_exWorkSpace,
+                QueryResult& p_queryResults,
+                std::shared_ptr<VectorIndex> p_index,
+                SearchStats* p_stats,
+                std::set<int>* truth, std::map<int, std::set<int>>* found)
+            {
+                const uint32_t postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
+
+                COMMON::QueryResultSet<ValueType>& queryResults = *((COMMON::QueryResultSet<ValueType>*)&p_queryResults);
+ 
+                int diskRead = 0;
+                int diskIO = 0;
+                int listElements = 0;
+
+                for (uint32_t pi = 0; pi < postingListCount; ++pi)
+                {
+                    auto curPostingID = p_exWorkSpace->m_postingIDs[pi];
+                    auto* listInfo = &(this->m_listInfos[curPostingID]);
+                    int fileid = this->m_oneContext? 0: curPostingID / this->m_listPerFile;
+
+                    Helper::DiskIO* indexFile = this->m_indexFiles[fileid].get();
+
+                    diskRead += listInfo->listPageCount;
+                    diskIO += 1;
+                    listElements += listInfo->listEleCount;
+
+                    size_t totalBytes = (static_cast<size_t>(listInfo->listPageCount) << PageSizeEx);
+                    char* buffer = (char*)((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
+                    auto numRead = indexFile->ReadBinary(totalBytes, buffer, listInfo->listOffset);
+                    if (numRead != totalBytes) {
+                        SPTAGLIB_LOG(Helper::LogLevel::LL_Error, "File %s read bytes, expected: %zu, acutal: %llu.\n", this->m_extraFullGraphFile.c_str(), totalBytes, numRead);
+                        throw std::runtime_error("File read mismatch");
+                    }
+                    // decompress posting list
+                    char* p_postingListFullData = buffer + listInfo->pageOffset;
+                    if (this->m_enableDataCompression)
+                    {
+                      {
+                        p_postingListFullData =
+                            (char *)
+                                p_exWorkSpace->m_decompressBuffer.GetBuffer();
+                        if (listInfo->listEleCount != 0) {
+                          std ::size_t sizePostingListFullData;
+                          try {
+                            sizePostingListFullData = this->m_pCompressor->Decompress(
+                                buffer + listInfo->pageOffset,
+                                listInfo->listTotalBytes, p_postingListFullData,
+                                listInfo->listEleCount * this->m_vectorInfoSize,
+                                this->m_enableDictTraining);
+                          } catch (std ::runtime_error &err) {
+                            GetLogger()->Logging(
+                                "SPTAG", Helper ::LogLevel ::LL_Error,
+                                "/dataset/SPTAG/AnnService/inc/Core/SPANN/"
+                                "ExtraFullGraphSearcher.h",
+                                1654, __FUNCTION__,
+                                "Decompress postingList %d  failed! %s, \n",
+                                listInfo - this->m_listInfos.data(), err.what());
+                            return;
+                          }
+                          if (sizePostingListFullData !=
+                              listInfo->listEleCount * this->m_vectorInfoSize) {
+                            GetLogger()->Logging(
+                                "SPTAG", Helper ::LogLevel ::LL_Error,
+                                "/dataset/SPTAG/AnnService/inc/Core/SPANN/"
+                                "ExtraFullGraphSearcher.h",
+                                1654, __FUNCTION__,
+                                "PostingList %d decompressed size not match! "
+                                "%zu, %d, \n",
+                                listInfo - this->m_listInfos.data(),
+                                sizePostingListFullData,
+                                listInfo->listEleCount * this->m_vectorInfoSize);
+                            return;
+                          }
+                        }
+                      };
+                    }
+
+                    for (int i = 0; i < listInfo->listEleCount; i++) {
+                      uint64_t offsetVectorID, offsetVector;
+                      (*(this->m_parsePosting))(offsetVectorID, offsetVector, i,
+                                              listInfo->listEleCount);
+                      int vectorID = *(reinterpret_cast<int *>(
+                          p_postingListFullData + offsetVectorID));
+                      if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID))
+                        continue;
+                      (*(this->m_parseEncoding))(
+                          p_index, listInfo,
+                          (ValueType *)(p_postingListFullData + offsetVector));
+                      auto distance2leaf = p_index->ComputeDistance(
+                          queryResults.GetQuantizedTarget(),
+                          p_postingListFullData + offsetVector);
+                      queryResults.AddPoint(vectorID, distance2leaf);
+                    };
+                }
+
+                if (truth) {
+                    for (uint32_t pi = 0; pi < postingListCount; ++pi)
+                    {
+                        auto curPostingID = p_exWorkSpace->m_postingIDs[pi];
+
+                        auto* listInfo = &(this->m_listInfos[curPostingID]);
+                        char* buffer = (char*)((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
+
+                        char* p_postingListFullData = buffer + listInfo->pageOffset;
+                        if (this->m_enableDataCompression)
+                        {
+                            p_postingListFullData = (char*)p_exWorkSpace->m_decompressBuffer.GetBuffer();
+                            if (listInfo->listEleCount != 0)
+                            {
+                                try {
+                                    this->m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes, p_postingListFullData, listInfo->listEleCount * this->m_vectorInfoSize, this->m_enableDictTraining);
+                                }
+                                catch (std::runtime_error& err) {
+                                    SPTAGLIB_LOG(Helper::LogLevel::LL_Error, "Decompress postingList %d  failed! %s, \n", curPostingID, err.what());
+                                    continue;
+                                }
+                            }
+                        }
+
+                        for (size_t i = 0; i < listInfo->listEleCount; ++i) {
+                            uint64_t offsetVectorID = this->m_enablePostingListRearrange ? (this->m_vectorInfoSize - sizeof(int)) * listInfo->listEleCount + sizeof(int) * i : this->m_vectorInfoSize * i; \
+                            int vectorID = *(reinterpret_cast<int*>(p_postingListFullData + offsetVectorID)); \
+                            if (truth && truth->count(vectorID)) (*found)[curPostingID].insert(vectorID);
+                        }
+                    }
+                }
+
+                if (p_stats) 
+                {
+                    p_stats->m_totalListElementsCount = listElements;
+                    p_stats->m_diskIOCount = diskIO;
+                    p_stats->m_diskAccessCount = diskRead;
+                }
+            }
+        };
+
     } // namespace SPANN
 } // namespace SPTAG
 
