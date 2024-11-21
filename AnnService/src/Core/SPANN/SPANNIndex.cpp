@@ -904,10 +904,10 @@ namespace SPTAG
 
                 if (m_pQuantizer)
                 {
-                    m_extraSearcher.reset(new ExtraFullGraphSearcher<std::uint8_t>());
+                    m_extraSearcher.reset(new ExtraFullGraphISCSearcher<std::uint8_t>());
                 }
                 else {
-                    m_extraSearcher.reset(new ExtraFullGraphSearcher<T>());
+                    m_extraSearcher.reset(new ExtraFullGraphISCSearcher<T>());
                 }
 
                 if (m_options.m_buildSsdIndex) {

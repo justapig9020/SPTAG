@@ -8,6 +8,7 @@
 #include <fstream>
 #include <string.h>
 #include <memory>
+#include <assert.h>
 
 namespace SPTAG
 {
@@ -57,6 +58,10 @@ namespace SPTAG
                 std::uint16_t threadPoolSize = 4) = 0;
 
             virtual std::uint64_t ReadBinary(std::uint64_t readSize, char* buffer, std::uint64_t offset = UINT64_MAX) = 0;
+            virtual bool DistCalc(const std::uint64_t lba, const size_t calcPages, const char* target, char* buffer, size_t vectorSize)
+            {
+              assert(0 && "Does not support ISC"); // This raises an assertion failure
+            }
 
             virtual std::uint64_t WriteBinary(std::uint64_t writeSize, const char* buffer, std::uint64_t offset = UINT64_MAX) = 0;
 

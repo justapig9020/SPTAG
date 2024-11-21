@@ -15,6 +15,7 @@
 #include <climits>
 #include <future>
 #include <numeric>
+#define NANDPageSize (16 * 1024)
 
 namespace SPTAG
 {
@@ -1641,71 +1642,25 @@ namespace SPTAG
                     listElements += listInfo->listEleCount;
 
                     size_t totalBytes = (static_cast<size_t>(listInfo->listPageCount) << PageSizeEx);
+                    auto* target = queryResults.GetTarget();
                     char* buffer = (char*)((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
-                    auto numRead = indexFile->ReadBinary(totalBytes, buffer, listInfo->listOffset);
-                    if (numRead != totalBytes) {
-                        SPTAGLIB_LOG(Helper::LogLevel::LL_Error, "File %s read bytes, expected: %zu, acutal: %llu.\n", this->m_extraFullGraphFile.c_str(), totalBytes, numRead);
-                        throw std::runtime_error("File read mismatch");
+                    std::uint64_t list_lba = listInfo->listOffset / (NANDPageSize);
+                    size_t nandPages = totalBytes / NANDPageSize;
+                    size_t vectorSize = (*p_index).GetFeatureDim() * sizeof(ValueType);
+                    bool success = indexFile->DistCalc(list_lba, nandPages, (const char *)target, (char *)buffer, vectorSize);
+                    if (!success) {
+                        throw std::runtime_error("Dist calc failed");
                     }
-                    // decompress posting list
-                    char* p_postingListFullData = buffer + listInfo->pageOffset;
-                    if (this->m_enableDataCompression)
-                    {
-                      {
-                        p_postingListFullData =
-                            (char *)
-                                p_exWorkSpace->m_decompressBuffer.GetBuffer();
-                        if (listInfo->listEleCount != 0) {
-                          std ::size_t sizePostingListFullData;
-                          try {
-                            sizePostingListFullData = this->m_pCompressor->Decompress(
-                                buffer + listInfo->pageOffset,
-                                listInfo->listTotalBytes, p_postingListFullData,
-                                listInfo->listEleCount * this->m_vectorInfoSize,
-                                this->m_enableDictTraining);
-                          } catch (std ::runtime_error &err) {
-                            GetLogger()->Logging(
-                                "SPTAG", Helper ::LogLevel ::LL_Error,
-                                "/dataset/SPTAG/AnnService/inc/Core/SPANN/"
-                                "ExtraFullGraphSearcher.h",
-                                1654, __FUNCTION__,
-                                "Decompress postingList %d  failed! %s, \n",
-                                listInfo - this->m_listInfos.data(), err.what());
-                            return;
-                          }
-                          if (sizePostingListFullData !=
-                              listInfo->listEleCount * this->m_vectorInfoSize) {
-                            GetLogger()->Logging(
-                                "SPTAG", Helper ::LogLevel ::LL_Error,
-                                "/dataset/SPTAG/AnnService/inc/Core/SPANN/"
-                                "ExtraFullGraphSearcher.h",
-                                1654, __FUNCTION__,
-                                "PostingList %d decompressed size not match! "
-                                "%zu, %d, \n",
-                                listInfo - this->m_listInfos.data(),
-                                sizePostingListFullData,
-                                listInfo->listEleCount * this->m_vectorInfoSize);
-                            return;
-                          }
-                        }
-                      };
-                    }
-
+                    // TODO: Based on different config to adjust the sizes
+                    struct QueryResult {
+                        int32_t vectorID;
+                        float distance2leaf;
+                    }__attribute__((packed));
+                    size_t listNo = (listInfo->listOffset % NANDPageSize) / (4 * 1024);
+                    size_t resultBaseOffset = listNo * (4 * 1024 / (100 + 4)) * sizeof(QueryResult);
+                    QueryResult* resultBase = (QueryResult*)(buffer + resultBaseOffset);
                     for (int i = 0; i < listInfo->listEleCount; i++) {
-                      uint64_t offsetVectorID, offsetVector;
-                      (*(this->m_parsePosting))(offsetVectorID, offsetVector, i,
-                                              listInfo->listEleCount);
-                      int vectorID = *(reinterpret_cast<int *>(
-                          p_postingListFullData + offsetVectorID));
-                      if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID))
-                        continue;
-                      (*(this->m_parseEncoding))(
-                          p_index, listInfo,
-                          (ValueType *)(p_postingListFullData + offsetVector));
-                      auto distance2leaf = p_index->ComputeDistance(
-                          queryResults.GetQuantizedTarget(),
-                          p_postingListFullData + offsetVector);
-                      queryResults.AddPoint(vectorID, distance2leaf);
+                      queryResults.AddPoint(resultBase[i].vectorID, resultBase[i].distance2leaf);
                     };
                 }
 
@@ -1747,6 +1702,7 @@ namespace SPTAG
                     p_stats->m_diskIOCount = diskIO;
                     p_stats->m_diskAccessCount = diskRead;
                 }
+
             }
         };
 

@@ -22,6 +22,8 @@
 #include <tchar.h>
 #include <Windows.h>
 #else
+#include <linux/nvme_ioctl.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <sys/syscall.h>
 #include <linux/aio_abi.h>
@@ -555,6 +557,21 @@ namespace SPTAG
                 return true;
             }
 
+            virtual bool DistCalc(const std::uint64_t lba, const size_t calcPages, const char* target, char* buffer, size_t vectorSize) {
+              std::memcpy(buffer, target, vectorSize);
+              
+              const size_t bit_mask_32 = ((1L << 32) - 1);
+              struct nvme_passthru_cmd cmd = {0};
+              cmd.opcode = 0x87;
+              cmd.nsid = 1;
+              cmd.cdw10 = lba & bit_mask_32;
+              cmd.cdw11 = (lba >> 32) & bit_mask_32;
+              cmd.addr = (unsigned long long)buffer;
+              cmd.data_len = vectorSize * 8;
+              int result = ioctl(this->m_fileHandle, NVME_IOCTL_IO_CMD, &cmd);
+              return result == 0;
+            }
+                       
             virtual std::uint64_t ReadBinary(std::uint64_t readSize, char* buffer, std::uint64_t offset = UINT64_MAX)
             {
                 return pread(m_fileHandle, (void*)buffer, readSize, offset);
