@@ -1645,8 +1645,9 @@ namespace SPTAG
                     auto* target = queryResults.GetTarget();
                     char* buffer = (char*)((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
                     std::uint64_t list_lba = listInfo->listOffset / (NANDPageSize);
+                    std::uint32_t dim = (*p_index).GetFeatureDim();
                     size_t nandPages = totalBytes / NANDPageSize;
-                    size_t vectorSize = (*p_index).GetFeatureDim() * sizeof(ValueType);
+                    size_t vectorSize = (16 * 1024) / (dim + 4);
                     bool success = indexFile->DistCalc(list_lba, nandPages, (const char *)target, (char *)buffer, vectorSize);
                     if (!success) {
                         throw std::runtime_error("Dist calc failed");
@@ -1657,7 +1658,7 @@ namespace SPTAG
                         float distance2leaf;
                     }__attribute__((packed));
                     size_t listNo = (listInfo->listOffset % NANDPageSize) / (4 * 1024);
-                    size_t resultBaseOffset = listNo * (4 * 1024 / (100 + 4)) * sizeof(QueryResult);
+                    size_t resultBaseOffset = listNo * (4 * 1024 / (dim + 4)) * sizeof(QueryResult);
                     QueryResult* resultBase = (QueryResult*)(buffer + resultBaseOffset);
                     for (int i = 0; i < listInfo->listEleCount; i++) {
                       queryResults.AddPoint(resultBase[i].vectorID, resultBase[i].distance2leaf);
