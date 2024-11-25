@@ -557,17 +557,19 @@ namespace SPTAG
                 return true;
             }
 
-            virtual bool DistCalc(const std::uint64_t lba, const size_t calcPages, const char* target, char* buffer, size_t vectorSize) {
-              std::memcpy(buffer, target, vectorSize);
+            virtual bool DistCalc(const std::uint64_t lba, const size_t calcPages, const char* target, char* buffer, size_t dim) {
+              std::memcpy(buffer, target, dim);
               
               const size_t bit_mask_32 = ((1L << 32) - 1);
+              const unsigned long long resultCount = (16 * 1024) / (dim + 4);
               struct nvme_passthru_cmd cmd = {0};
               cmd.opcode = 0x87;
               cmd.nsid = 1;
               cmd.cdw10 = lba & bit_mask_32;
               cmd.cdw11 = (lba >> 32) & bit_mask_32;
               cmd.addr = (unsigned long long)buffer;
-              cmd.data_len = vectorSize * 8;
+              cmd.data_len = resultCount * 8;
+              // cmd.timeout_ms = 0xFFFFFFFF;
               int result = ioctl(this->m_fileHandle, NVME_IOCTL_IO_CMD, &cmd);
               return result == 0;
             }

@@ -15,7 +15,10 @@
 #include <climits>
 #include <future>
 #include <numeric>
+#include <cassert>
 #define NANDPageSize (16 * 1024)
+#define LBSize (4 * 1024)
+#define ALIGN(n, a) ((n) / (a) * (a))
 
 namespace SPTAG
 {
@@ -1644,22 +1647,21 @@ namespace SPTAG
                     size_t totalBytes = (static_cast<size_t>(listInfo->listPageCount) << PageSizeEx);
                     auto* target = queryResults.GetTarget();
                     char* buffer = (char*)((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
-                    std::uint64_t list_lba = listInfo->listOffset / (NANDPageSize);
+                    std::uint64_t list_lba = ALIGN(listInfo->listOffset / (LBSize), 4);
+                    assert(list_lba % 4 == 0);
                     std::uint32_t dim = (*p_index).GetFeatureDim();
-                    size_t nandPages = totalBytes / NANDPageSize;
-                    size_t vectorSize = (16 * 1024) / (dim + 4);
-                    bool success = indexFile->DistCalc(list_lba, nandPages, (const char *)target, (char *)buffer, vectorSize);
+                    size_t logicBlocks = 4; // INA only support apply dist calc on one NAND page
+                    bool success = indexFile->DistCalc(list_lba, logicBlocks, (const char *)target, (char *)buffer, dim);
                     if (!success) {
                         throw std::runtime_error("Dist calc failed");
                     }
                     // TODO: Based on different config to adjust the sizes
                     struct QueryResult {
-                        int32_t vectorID;
+                       int32_t vectorID;
                         float distance2leaf;
                     }__attribute__((packed));
-                    size_t listNo = (listInfo->listOffset % NANDPageSize) / (4 * 1024);
-                    size_t resultBaseOffset = listNo * (4 * 1024 / (dim + 4)) * sizeof(QueryResult);
-                    QueryResult* resultBase = (QueryResult*)(buffer + resultBaseOffset);
+                    size_t resultBaseOffset = listInfo->pageOffset / (dim + 4);
+                    QueryResult* resultBase = &((QueryResult*)buffer)[resultBaseOffset];
                     for (int i = 0; i < listInfo->listEleCount; i++) {
                       queryResults.AddPoint(resultBase[i].vectorID, resultBase[i].distance2leaf);
                     };
