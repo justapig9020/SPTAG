@@ -274,22 +274,22 @@ namespace SPTAG {
                 std::vector<std::set<SizeType>> truth;
                 if (!truthFile.empty())
                 {
-                    SPTAGLIB_LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
 
                     auto ptr = f_createIO();
                     if (ptr == nullptr || !ptr->Initialize(truthFile.c_str(), std::ios::in | std::ios::binary)) {
                         SPTAGLIB_LOG(Helper::LogLevel::LL_Error, "Failed open truth file: %s\n", truthFile.c_str());
-                        exit(1);
-                    }
-                    int originalK = truthK;
-                    COMMON::TruthSet::LoadTruth(ptr, truth, numQueries, originalK, truthK, p_opts.m_truthType);
-                    char tmp[4];
-                    if (ptr->ReadBinary(4, tmp) == 4) {
-                        SPTAGLIB_LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
-                    }
+                    } else {
+                      SPTAGLIB_LOG(Helper::LogLevel::LL_Info, "Start loading TruthFile...\n");
+                      int originalK = truthK;
+                      COMMON::TruthSet::LoadTruth(ptr, truth, numQueries, originalK, truthK, p_opts.m_truthType);
+                      char tmp[4];
+                      if (ptr->ReadBinary(4, tmp) == 4) {
+                          SPTAGLIB_LOG(Helper::LogLevel::LL_Error, "Truth number is larger than query number(%d)!\n", numQueries);
+                      }
 
-                    recall = COMMON::TruthSet::CalculateRecall<ValueType>((p_index->GetMemoryIndex()).get(), results, truth, K, truthK, querySet, vectorSet, numQueries, nullptr, false, &MRR);
-                    SPTAGLIB_LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f MRR@%d: %f\n", truthK, K, recall, K, MRR);
+                      recall = COMMON::TruthSet::CalculateRecall<ValueType>((p_index->GetMemoryIndex()).get(), results, truth, K, truthK, querySet, vectorSet, numQueries, nullptr, false, &MRR);
+                      SPTAGLIB_LOG(Helper::LogLevel::LL_Info, "Recall%d@%d: %f MRR@%d: %f\n", truthK, K, recall, K, MRR);
+                    }
                 }
 
                 SPTAGLIB_LOG(Helper::LogLevel::LL_Info, "\nEx Elements Count:\n");
