@@ -83,24 +83,6 @@ namespace SPTAG
             }
         };
 
-#define DecompressPostingReturnError(){\
-        p_postingListFullData = (char*)p_exWorkSpace->m_decompressBuffer.GetBuffer(); \
-        if (listInfo->listEleCount != 0) { \
-            std::size_t sizePostingListFullData;\
-            try {\
-                sizePostingListFullData = m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes, p_postingListFullData, listInfo->listEleCount * m_vectorInfoSize, m_enableDictTraining);\
-            }\
-            catch (std::runtime_error& err) {\
-                SPTAGLIB_LOG(Helper::LogLevel::LL_Error, "Decompress postingList %d  failed! %s, \n", listInfo - m_listInfos.data(), err.what());\
-                return ErrorCode::Fail; \
-            }\
-            if (sizePostingListFullData != listInfo->listEleCount * m_vectorInfoSize) {\
-                SPTAGLIB_LOG(Helper::LogLevel::LL_Error, "PostingList %d decompressed size not match! %zu, %d, \n", listInfo - m_listInfos.data(), sizePostingListFullData, listInfo->listEleCount * m_vectorInfoSize);\
-                return ErrorCode::Fail; \
-            }\
-        }\
-}\
-
 #define DecompressPosting(){\
         p_postingListFullData = (char*)p_exWorkSpace->m_decompressBuffer.GetBuffer(); \
         if (listInfo->listEleCount != 0) { \
@@ -110,11 +92,11 @@ namespace SPTAG
             }\
             catch (std::runtime_error& err) {\
                 SPTAGLIB_LOG(Helper::LogLevel::LL_Error, "Decompress postingList %d  failed! %s, \n", listInfo - m_listInfos.data(), err.what());\
-                return ; \
+                return;\
             }\
             if (sizePostingListFullData != listInfo->listEleCount * m_vectorInfoSize) {\
                 SPTAGLIB_LOG(Helper::LogLevel::LL_Error, "PostingList %d decompressed size not match! %zu, %d, \n", listInfo - m_listInfos.data(), sizePostingListFullData, listInfo->listEleCount * m_vectorInfoSize);\
-                return ; \
+                return;\
             }\
         }\
 }\
@@ -1027,7 +1009,7 @@ namespace SPTAG
                 char* p_postingListFullData = buffer + listInfo->pageOffset;
                 if (m_enableDataCompression)
                 {
-                    DecompressPostingReturnError();
+                    DecompressPosting();
                 }
 
                 for (int i = 0; i < listInfo->listEleCount; i++) 
